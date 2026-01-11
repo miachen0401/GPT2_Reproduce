@@ -1,0 +1,2 @@
+BERT = Encoder-only Transformer + [CLS] + 双向 attention + MLM 训练
+

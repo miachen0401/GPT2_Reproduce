@@ -1,0 +1,101 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class GPT(nn.Module):
+	def __init__(self, vocab_size, emb_size, seq_len, n_head, n, ratio):
+		super().__init__()
+
+		self.emb = nn.Embedding(vocab_size, emb_size)
+		self.pos = PositionalEmbed(seq_len, emb_size)
+
+		self.transformer = nn.ModuleList([TransfromerBlock(emb_size, n_head) for _ in range(n)])
+		self.norm = nn.LayerNorm(emb_size)
+
+	def forward(self, x):
+		token = self.emb(x) + self.pos(x)
+		out = token
+		for block in self.transformer:
+			out = block(out)
+		return F.softmax(self.norm(out), dim = -1)
+
+class TransfromerBlock(nn.Module):
+	def __init__(self, emb_size, n_head, ratio):
+		super().__init__()
+
+		self.norm1 = nn.LayerNorm(emb_size)
+		self.attn = MultiHeadSelfAttention(emb_size, n_head)
+		self.norm2 = nn.LayerNorm(emb_size)
+		self.mlp = MLP(emb_size, ratio)
+
+	def forward(self, x):
+		x = x + self.attn(self.norm1(x))
+		x = x + self.mlp(self.norm2(x))
+		return x
+
+
+class MultiHeadSelfAttention(nn.Module):
+	def __init__(self, emb_size, n_head):
+		assert emb_size % n_head == 0
+
+		self.n_head = n_head
+		self.head_dim = emb_size // self.n_head
+
+		self.qkv = nn.Linear(emb_size, 3 * emb_size)
+
+	def forward(self, x):
+		qkv = self.qkv(x)
+		q, k, v = qkv.chunk(3, dim = -1)
+
+		B, T, C = x.shape
+
+		q = q.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
+		k = k.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
+		v = v.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
+
+		mask = torch.tril(torch.ones(T, T)).bool()
+
+		attn = q @ k.transpose(-1,-2) / self.head_dim ** 0.5
+		attn = attn.masked_fill(~mask, -inf)
+		attn = F.softmax(attn, dim = -1)
+		out = attn @ v
+
+		out = out.transpose(1,2).contigious().view(B, T, C)
+
+		return F.softmax(out)
+
+
+class MLP(nn.Module):
+	def __init__(self, emb_size, ratio):
+		super().__init__()
+		self.fc1 = nn.Linear(emb_size, emb_size * ratio)
+		self.fc2 = nn.Linear(emb_size * ratio, emb_size)
+
+	def forward(self, x):
+		out = self.fc2(F.reLu(self.fc1(x)))
+		return out
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
