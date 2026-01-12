@@ -1,13 +1,21 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from dataclasses import dataclass
+from torch.utils.data import DataLoader, Dataset
+
+
+@dataclass
+class GPTConfig:
+	vocab_size: 200_000
+	...
 
 class GPT(nn.Module):
 	def __init__(self, vocab_size, emb_size, seq_len, n_head, n, ratio):
 		super().__init__()
 
 		self.emb = nn.Embedding(vocab_size, emb_size)
-		self.pos = PositionalEmbed(seq_len, emb_size)
+		self.pos = nn.Embedding(seq_len, emb_size)
 
 		self.transformer = nn.ModuleList([TransfromerBlock(emb_size, n_head) for _ in range(n)])
 		self.norm = nn.LayerNorm(emb_size)
@@ -17,7 +25,11 @@ class GPT(nn.Module):
 		out = token
 		for block in self.transformer:
 			out = block(out)
-		return F.softmax(self.norm(out), dim = -1)
+
+		self.lm_head = nn.Linear(emb_size, vocab_size)
+
+		logits = self.lm_head(self.norm(out))
+		return logits
 
 class TransfromerBlock(nn.Module):
 	def __init__(self, emb_size, n_head, ratio):
@@ -62,7 +74,7 @@ class MultiHeadSelfAttention(nn.Module):
 
 		out = out.transpose(1,2).contigious().view(B, T, C)
 
-		return F.softmax(out)
+		return out
 
 
 class MLP(nn.Module):
@@ -78,10 +90,60 @@ class MLP(nn.Module):
 
 
 
+class TrainData(Dataset):
+	def __init__(self, seq_len, vocab_size):
+
+	...
+
+
+def train(model: nn.Module,
+			loader: Dataloader,
+			optimizer: torch.optim.Optimizer,
+			max_grad_norm: float = 1.0,
+			device: torch.device):
+	model.train()
+	total_loss = 0.0
+	num_batch = 0
+
+	for input_ids in loader:
+		input_ids = input_ids.to(device）
+
+		optimizer.zero_grad(set_to_none = True)
+
+		logits = model(input_ids)
+
+		loss = F.cross_entropy(
+					logits[:, :-1, :].contigious().view(-1, logits.size(-1)),
+					input_ids[:, 1:].view(-1))
+
+		loss.backward()
+		torch.nn.utils.clip_grad_nrom_(model.parameters(), max_grad_norm)
+		optimizer.step()
+
+		num_batch +=1
+		total_loss += float(loss.item())
+
+	return total_loss/max(num_batch, 1)
 
 
 
+if __name__ == "__main__":
+	torch.manual_seed(22)
 
+	device = "gpu" if torch.cuda.is_available() else "cpu"
+	config = GPTConfig(vocab_size, ...)
+	model = GPT(config).to(device)
+	optimizer = torch.optim.AdamW(model.parameters(), lr = 2E-5, weight_decay = 0.1)
+
+	data = TrainData()
+
+	for epoch in range(100):
+		avg_loss = train(model, data, optimizer, device)
+		ppl = math.exp(avg_loss)
+
+
+
+	
 
 
 
